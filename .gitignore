@@ -1,3 +1,5 @@
 Cargo.lock
 target
 *.ppm
+output.*
+rgb_dots.tga

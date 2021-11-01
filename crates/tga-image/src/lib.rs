@@ -1,5 +1,13 @@
-use core::slice;
+#![warn(missing_docs)]
+
+//! # TGA Image
+//!
+//! utility for loading [Truevision TGA](https://en.wikipedia.org/wiki/Truevision_TGA) images.
+//! Provide reading and writing of the format via `std::io::Read` and `std::io::Write` and
+//! returns the relevant `io::Result`
+
 use std::{
+    fs,
     io::{self, Write},
     path::Path,
 };
@@ -68,6 +76,37 @@ impl TgaHeader {
         }
     }
 
+    fn into_buffer(self) -> [u8; 18] {
+        fn upper(n: u16) -> u8 {
+            (n >> 8) as u8
+        }
+
+        fn lower(n: u16) -> u8 {
+            (n & 0xff) as u8
+        }
+
+        [
+            self.id_len,
+            self.color_map_type,
+            self.data_type_code,
+            lower(self.color_map_origin),
+            upper(self.color_map_origin),
+            lower(self.color_map_length),
+            upper(self.color_map_length),
+            self.color_map_depth,
+            lower(self.x_origin as u16),
+            upper(self.x_origin as u16),
+            lower(self.y_origin as u16),
+            upper(self.y_origin as u16),
+            lower(self.width as u16),
+            upper(self.width as u16),
+            lower(self.height as u16),
+            upper(self.height as u16),
+            self.bits_per_pixel,
+            self.image_descriptor,
+        ]
+    }
+
     fn validate(self) -> io::Result<Self> {
         if self.width <= 0 {
             return Err(io::Error::new(
@@ -95,6 +134,15 @@ impl TgaHeader {
     }
 }
 
+/// # The color of a single pixel
+/// 
+/// TGAs can have multiple formats, currently only a few are supported
+/// 
+/// - Greyscale
+/// - RGB
+/// - RGBA
+/// 
+/// other formats will either result in an `io::ErrorKind::InvalidData` or have unexpected results
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
     bgra: [u8; 4],
@@ -102,41 +150,48 @@ pub struct Color {
 }
 
 impl Color {
-    pub fn grey_scale(v: u8) -> Self {
+    /// Creates a new grey scale color
+    pub const fn grey_scale(v: u8) -> Self {
         Self {
             bgra: [v, 0, 0, 0],
             bytes_pp: 1,
         }
     }
 
-    pub fn rgb(r: u8, g: u8, b: u8) -> Self {
+    /// Creates a new RGB color
+    pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self {
             bgra: [b, g, r, 0],
             bytes_pp: 3,
         }
     }
 
-    pub fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
+    /// Creates a new RGBA color
+    pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self {
             bgra: [b, g, r, a],
             bytes_pp: 4,
         }
     }
 
-    pub fn try_from_slice(slice: &[u8]) -> Option<Self> {
+    const fn try_from_slice(slice: &[u8]) -> Option<Self> {
         match *slice {
             [v] => Some(Self::grey_scale(v)),
-            [r, g, b] => Some(Self::rgb(r, g, b)),
-            [r, g, b, a] => Some(Self::rgba(r, g, b, a)),
+            [b, g, r] => Some(Self::rgb(r, g, b)),
+            [b, g, r, a] => Some(Self::rgba(r, g, b, a)),
             _ => None,
         }
     }
 
-    pub fn as_slice(&self) -> &[u8] {
+    fn as_slice(&self) -> &[u8] {
         &self.bgra[..self.bytes_pp]
     }
 }
 
+/// # The in memory representation of an image
+/// 
+/// This structure allows some basic image manipulation such as flipping vertically and
+/// horizontally, as well as single pixel manipulation.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Image {
     width: usize,
@@ -146,6 +201,8 @@ pub struct Image {
 }
 
 impl Image {
+
+    /// Creates a new blank image
     pub fn new(width: usize, height: usize, bytes_pp: usize) -> Self {
         let n_bytes = width * height * bytes_pp;
         let data = vec![0u8; n_bytes];
@@ -166,7 +223,7 @@ impl Image {
         let buf = &mut buf[..bytes_pp];
         let mut chunk_header = 0;
         loop {
-            input.read_exact(slice::from_mut(&mut chunk_header))?;
+            input.read_exact(std::slice::from_mut(&mut chunk_header))?;
             let chunk_header = chunk_header;
             if chunk_header < 128 {
                 for _ in 0..=chunk_header {
@@ -186,32 +243,174 @@ impl Image {
         }
     }
 
-    fn save_rle_data<W: io::Write>(&self, output: W) -> io::Result<()> {
-        todo!()
+    fn save_rle_data<W: io::Write>(&self, mut output: W) -> io::Result<()> {
+        const MAX_CHUNK_LENGTH: usize = 128;
+        let n_pixels = self.width * self.height;
+        let mut current_pixel = 0;
+
+        while current_pixel < n_pixels {
+            let chunk_start = current_pixel * self.bytes_pp;
+            let mut current_byte = current_pixel * self.bytes_pp;
+            let mut run_length = 1;
+            let mut raw = true;
+
+            while current_pixel + run_length < n_pixels && run_length < MAX_CHUNK_LENGTH {
+                let mut succ_eq = true;
+                let mut t = 0;
+                while succ_eq && t < self.bytes_pp {
+                    succ_eq =
+                        self.data[current_byte + t] == self.data[current_byte + t + self.bytes_pp];
+                    t += 1;
+                }
+
+                current_byte += self.bytes_pp;
+
+                if run_length == 1 {
+                    raw = !succ_eq;
+                }
+
+                if raw && succ_eq {
+                    run_length -= 1;
+                    break;
+                }
+
+                if !raw && !succ_eq {
+                    break;
+                }
+
+                run_length += 1;
+            }
+
+            current_pixel += run_length;
+            let buf = if raw {
+                [run_length as u8 - 1]
+            } else {
+                [run_length as u8 + 127]
+            };
+
+            output.write_all(&buf)?;
+            if raw {
+                output.write_all(&self.data[chunk_start..][..(run_length * self.bytes_pp)])?;
+            } else {
+                output.write_all(&self.data[chunk_start..][..self.bytes_pp])?;
+            }
+        }
+
+        Ok(())
     }
 
+    /// # Reads an image from a file
+    /// 
+    /// ## errors
+    /// 
+    /// - while opening the file see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
+    /// - while reading the file see [`from_reader`]
     pub fn read_tga_file<P: AsRef<Path>>(filename: P) -> io::Result<Self> {
         let file = std::fs::File::open(filename.as_ref())?;
 
-        Self::read_tga(file)
+        Self::from_reader(file)
     }
 
+    /// # Writes an image to a file
+    /// 
+    /// ## errors
+    /// 
+    /// - while creating the file see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
     pub fn write_tga_file<P: AsRef<Path>>(&self, filename: P, rle: bool) -> io::Result<()> {
-        todo!()
+        let mut file = fs::File::create(filename.as_ref())?;
+        let developer_area_ref = [0, 0, 0, 0];
+        let extension_area_ref = [0, 0, 0, 0];
+        let footer = b"TRUEVISION-XFILE.\0";
+
+        let data_type_code = if self.bytes_pp == 1 {
+            if rle {
+                11
+            } else {
+                3
+            }
+        } else if rle {
+            10
+        } else {
+            2
+        };
+
+        eprintln!("{:x}", data_type_code);
+
+        let header = TgaHeader {
+            data_type_code,
+            width: self.width as i16,
+            height: self.height as i16,
+            bits_per_pixel: self.bytes_pp as u8 * 8,
+            image_descriptor: 0x20,
+            ..Default::default()
+        };
+
+        eprintln!("{:#x?}", header);
+
+        let header = header.into_buffer();
+
+        eprintln!("{:x?}", header);
+
+        file.write_all(&header)?;
+
+        if !rle {
+            file.write_all(&self.data)?;
+        } else {
+            self.save_rle_data(&mut file)?;
+        }
+
+        file.write_all(&developer_area_ref)?;
+        file.write_all(&extension_area_ref)?;
+        file.write_all(footer)?;
+
+        Ok(())
     }
 
-    pub fn flip_horizontally(&mut self) -> bool {
-        todo!()
+    /// Turns the image into its mirror image along the horizontal axis,
+    /// this occurs in place
+    pub fn flip_horizontally(&mut self) {
+        let half = self.width / 2;
+        for i in 0..half {
+            for j in 0..self.height {
+                let c1 = self.get(i, j).unwrap();
+                let c2 = self.get(self.width - 1 - i, j).unwrap();
+                self.set(i, j, c2);
+                self.set(self.width - 1 - i, j, c1);
+            }
+        }
     }
 
-    pub fn flip_vertically(&mut self) -> bool {
-        todo!()
+    /// Turns the image into its mirror image along the vertical axis.
+    pub fn flip_vertically(&mut self) {
+        let half = self.height / 2;
+        for i in 0..self.width {
+            for j in 0..half {
+                let c1 = self.get(i, j).unwrap();
+                let c2 = self.get(i, self.height - 1 - j).unwrap();
+                self.set(i, j, c2);
+                self.set(i, self.height - 1 - j, c1);
+            }
+        }
     }
 
+    /// Changes the width and height of the image
+    /// 
+    /// ??? it may stretch the image, this is not yet implemented
+    #[deprecated(note = "Not implemented yet")]
     pub fn scale(&mut self, width: usize, height: usize) -> bool {
+        if width == 0 || height == 0 {
+            return false;
+        }
+
         todo!()
     }
 
+    /// Access a single pixel within the image
+    /// 
+    /// ## returns
+    /// 
+    /// - Some(Color) if the indicies are inside the image area
+    /// - None otherwise
     pub fn get(&self, x: usize, y: usize) -> Option<Color> {
         if x >= self.width || y >= self.height {
             return None;
@@ -219,6 +418,13 @@ impl Image {
         Color::try_from_slice(&self.data[((x + y * self.width) * self.bytes_pp)..][..self.bytes_pp])
     }
 
+    /// Sets a single pixel to a color
+    /// 
+    /// ## returns
+    /// 
+    /// - true if this color matches the format of this image and is inside the image
+    /// - false otherwise
+    /// 
     pub fn set(&mut self, x: usize, y: usize, color: Color) -> bool {
         if x >= self.width || y >= self.height {
             return false;
@@ -230,37 +436,50 @@ impl Image {
             return false;
         }
 
-        self.data[(x + y * self.width * self.bytes_pp)..][..self.bytes_pp].clone_from_slice(slice);
+        self.data[(x + y * self.width) * self.bytes_pp..][..self.bytes_pp].clone_from_slice(slice);
 
         true
     }
 
+    /// Getter for the width
     pub fn width(&self) -> usize {
         self.width
     }
 
+    /// Getter for the height
     pub fn height(&self) -> usize {
         self.height
     }
 
+    /// Getter for the pixel format represented as bytes per pixel
     pub fn format(&self) -> usize {
         self.bytes_pp
     }
 
+    /// represents the raw data as an immutable slice
     pub fn as_slice(&self) -> &[u8] {
         self.data.as_slice()
     }
 
+    /// Represents the raw data as a mutable slice
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         self.data.as_mut_slice()
     }
 
+    /// Sets the data of this image to all 0s, this is usually black, or fully transparent black
     pub fn clear(&mut self) {
         self.data.iter_mut().for_each(|b| *b = 0);
     }
 
-    fn read_tga<R: io::Read>(mut file: R) -> Result<Image, io::Error> {
-        let header = TgaHeader::from_reader(&mut file)?;
+    /// Reads an image from an `io::Read`
+    /// 
+    /// ## Errors
+    /// 
+    /// - see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
+    /// - if the format isn't supported and `io::Error` of kind `io::ErrorKind::InvalidData`
+    ///  is returned
+    pub fn from_reader<R: io::Read>(mut reader: R) -> Result<Self, io::Error> {
+        let header = TgaHeader::from_reader(&mut reader)?;
 
         let width = header.width as usize;
         let height = header.height as usize;
@@ -269,12 +488,12 @@ impl Image {
         let data = match header.data_type_code {
             3 | 2 => {
                 let mut data = vec![0u8; n_bytes];
-                file.read_exact(&mut data)?;
+                reader.read_exact(&mut data)?;
                 data
             }
             11 | 10 => {
                 let mut data = vec![0u8; n_bytes];
-                Self::load_rle_data(&mut file, bytes_pp, &mut data)?;
+                Self::load_rle_data(&mut reader, bytes_pp, &mut data)?;
                 data
             }
             _ => {

@@ -95,62 +95,57 @@ impl TgaHeader {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TgaColor {
-    Empty,
-    GreyScale(u8),
-    Rgb { bgr: [u8; 3] },
-    Rgba { bgra: [u8; 4] },
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct Color {
+    bgra: [u8; 4],
+    bytes_pp: usize,
 }
 
-impl Default for TgaColor {
-    fn default() -> Self {
-        Self::Empty
-    }
-}
-
-impl TgaColor {
+impl Color {
     pub fn grey_scale(v: u8) -> Self {
-        Self::GreyScale(v)
+        Self {
+            bgra: [v, 0, 0, 0],
+            bytes_pp: 1,
+        }
     }
 
     pub fn rgb(r: u8, g: u8, b: u8) -> Self {
-        Self::Rgb { bgr: [b, g, r] }
+        Self {
+            bgra: [b, g, r, 0],
+            bytes_pp: 3,
+        }
     }
 
     pub fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self::Rgba { bgra: [b, g, r, a] }
+        Self {
+            bgra: [b, g, r, a],
+            bytes_pp: 4,
+        }
     }
 
     pub fn try_from_slice(slice: &[u8]) -> Option<Self> {
-        match slice {
-            [] => Some(Self::Empty),
-            &[v] => Some(Self::GreyScale(v)),
-            &[r, g, b] => Some(Self::Rgb { bgr: [b, g, r] }),
-            &[r, g, b, a] => Some(Self::Rgba { bgra: [b, g, r, a] }),
+        match *slice {
+            [v] => Some(Self::grey_scale(v)),
+            [r, g, b] => Some(Self::rgb(r, g, b)),
+            [r, g, b, a] => Some(Self::rgba(r, g, b, a)),
             _ => None,
         }
     }
 
     pub fn as_slice(&self) -> &[u8] {
-        match self {
-            TgaColor::Empty => &[],
-            TgaColor::GreyScale(v) => slice::from_ref(v),
-            TgaColor::Rgb { bgr } => bgr,
-            TgaColor::Rgba { bgra } => bgra,
-        }
+        &self.bgra[..self.bytes_pp]
     }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct TagImage {
+pub struct Image {
     width: usize,
     height: usize,
     bytes_pp: usize,
     data: Vec<u8>,
 }
 
-impl TagImage {
+impl Image {
     pub fn new(width: usize, height: usize, bytes_pp: usize) -> Self {
         let n_bytes = width * height * bytes_pp;
         let data = vec![0u8; n_bytes];
@@ -191,7 +186,7 @@ impl TagImage {
         }
     }
 
-    fn unload_rle_data<W: io::Write>(&self, output: W) -> io::Result<()> {
+    fn save_rle_data<W: io::Write>(&self, output: W) -> io::Result<()> {
         todo!()
     }
 
@@ -217,16 +212,14 @@ impl TagImage {
         todo!()
     }
 
-    pub fn get(&self, x: usize, y: usize) -> Option<TgaColor> {
+    pub fn get(&self, x: usize, y: usize) -> Option<Color> {
         if x >= self.width || y >= self.height {
             return None;
         }
-        TgaColor::try_from_slice(
-            &self.data[((x + y * self.width) * self.bytes_pp)..][..self.bytes_pp],
-        )
+        Color::try_from_slice(&self.data[((x + y * self.width) * self.bytes_pp)..][..self.bytes_pp])
     }
 
-    pub fn set(&mut self, x: usize, y: usize, color: TgaColor) -> bool {
+    pub fn set(&mut self, x: usize, y: usize, color: Color) -> bool {
         if x >= self.width || y >= self.height {
             return false;
         }
@@ -263,10 +256,10 @@ impl TagImage {
     }
 
     pub fn clear(&mut self) {
-        todo!()
+        self.data.iter_mut().for_each(|b| *b = 0);
     }
 
-    fn read_tga<R: io::Read>(mut file: R) -> Result<TagImage, io::Error> {
+    fn read_tga<R: io::Read>(mut file: R) -> Result<Image, io::Error> {
         let header = TgaHeader::from_reader(&mut file)?;
 
         let width = header.width as usize;

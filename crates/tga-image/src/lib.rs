@@ -57,54 +57,13 @@ impl TgaHeader {
     }
 
     fn from_buffer(buf: [u8; 18]) -> Self {
-        fn u16_from_2_u8(lower: u8, higher: u8) -> u16 {
-            lower as u16 + ((higher as u16) << 8)
-        }
-        Self {
-            id_len: buf[0],
-            color_map_type: buf[1],
-            data_type_code: buf[2],
-            color_map_origin: u16_from_2_u8(buf[3], buf[4]),
-            color_map_length: u16_from_2_u8(buf[5], buf[6]),
-            color_map_depth: buf[7],
-            x_origin: u16_from_2_u8(buf[8], buf[9]) as i16,
-            y_origin: u16_from_2_u8(buf[10], buf[11]) as i16,
-            width: u16_from_2_u8(buf[12], buf[13]) as i16,
-            height: u16_from_2_u8(buf[14], buf[15]) as i16,
-            bits_per_pixel: buf[16],
-            image_descriptor: buf[17],
-        }
+        // Safety: the header has a C, packed representation
+        unsafe { std::ptr::read(buf.as_ptr() as *const _) }
     }
 
     fn into_buffer(self) -> [u8; 18] {
-        fn upper(n: u16) -> u8 {
-            (n >> 8) as u8
-        }
-
-        fn lower(n: u16) -> u8 {
-            (n & 0xff) as u8
-        }
-
-        [
-            self.id_len,
-            self.color_map_type,
-            self.data_type_code,
-            lower(self.color_map_origin),
-            upper(self.color_map_origin),
-            lower(self.color_map_length),
-            upper(self.color_map_length),
-            self.color_map_depth,
-            lower(self.x_origin as u16),
-            upper(self.x_origin as u16),
-            lower(self.y_origin as u16),
-            upper(self.y_origin as u16),
-            lower(self.width as u16),
-            upper(self.width as u16),
-            lower(self.height as u16),
-            upper(self.height as u16),
-            self.bits_per_pixel,
-            self.image_descriptor,
-        ]
+        // Safety: the header has a C, packed representation
+        unsafe { std::ptr::read(&self as *const Self as *const _) }
     }
 
     fn validate(self) -> io::Result<Self> {
@@ -135,13 +94,13 @@ impl TgaHeader {
 }
 
 /// # The color of a single pixel
-/// 
+///
 /// TGAs can have multiple formats, currently only a few are supported
-/// 
+///
 /// - Greyscale
 /// - RGB
 /// - RGBA
-/// 
+///
 /// other formats will either result in an `io::ErrorKind::InvalidData` or have unexpected results
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Color {
@@ -188,8 +147,15 @@ impl Color {
     }
 }
 
+/// The encoding style for saving an image
+pub enum Encoding {
+    /// - Rle: run length encode the pixels, bad for natural images, good for
+    /// images with large areas of the same color
+    Rle,
+}
+
 /// # The in memory representation of an image
-/// 
+///
 /// This structure allows some basic image manipulation such as flipping vertically and
 /// horizontally, as well as single pixel manipulation.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -201,7 +167,6 @@ pub struct Image {
 }
 
 impl Image {
-
     /// Creates a new blank image
     pub fn new(width: usize, height: usize, bytes_pp: usize) -> Self {
         let n_bytes = width * height * bytes_pp;
@@ -300,9 +265,9 @@ impl Image {
     }
 
     /// # Reads an image from a file
-    /// 
+    ///
     /// ## errors
-    /// 
+    ///
     /// - while opening the file see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
     /// - while reading the file see [`from_reader`]
     pub fn read_tga_file<P: AsRef<Path>>(filename: P) -> io::Result<Self> {
@@ -312,26 +277,31 @@ impl Image {
     }
 
     /// # Writes an image to a file
-    /// 
+    ///
     /// ## errors
-    /// 
+    ///
     /// - while creating the file see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
-    pub fn write_tga_file<P: AsRef<Path>>(&self, filename: P, rle: bool) -> io::Result<()> {
+    pub fn write_tga_file<P: AsRef<Path>, E: Into<Option<Encoding>>>(
+        &self,
+        filename: P,
+        encoding: E,
+    ) -> io::Result<()> {
         let mut file = fs::File::create(filename.as_ref())?;
         let developer_area_ref = [0, 0, 0, 0];
         let extension_area_ref = [0, 0, 0, 0];
         let footer = b"TRUEVISION-XFILE.\0";
 
-        let data_type_code = if self.bytes_pp == 1 {
-            if rle {
-                11
-            } else {
-                3
-            }
-        } else if rle {
-            10
-        } else {
-            2
+        let encoding = encoding.into();
+
+        let data_type_code = match self.bytes_pp {
+            1 => match encoding {
+                Some(Encoding::Rle) => 11,
+                None => 3,
+            },
+            _ => match encoding {
+                Some(Encoding::Rle) => 10,
+                None => 2,
+            },
         };
 
         eprintln!("{:x}", data_type_code);
@@ -353,10 +323,9 @@ impl Image {
 
         file.write_all(&header)?;
 
-        if !rle {
-            file.write_all(&self.data)?;
-        } else {
-            self.save_rle_data(&mut file)?;
+        match encoding {
+            None => file.write_all(&self.data)?,
+            Some(Encoding::Rle) => self.save_rle_data(&mut file)?,
         }
 
         file.write_all(&developer_area_ref)?;
@@ -394,7 +363,7 @@ impl Image {
     }
 
     /// Changes the width and height of the image
-    /// 
+    ///
     /// ??? it may stretch the image, this is not yet implemented
     #[deprecated(note = "Not implemented yet")]
     pub fn scale(&mut self, width: usize, height: usize) -> bool {
@@ -406,9 +375,9 @@ impl Image {
     }
 
     /// Access a single pixel within the image
-    /// 
+    ///
     /// ## returns
-    /// 
+    ///
     /// - Some(Color) if the indicies are inside the image area
     /// - None otherwise
     pub fn get(&self, x: usize, y: usize) -> Option<Color> {
@@ -419,12 +388,12 @@ impl Image {
     }
 
     /// Sets a single pixel to a color
-    /// 
+    ///
     /// ## returns
-    /// 
+    ///
     /// - true if this color matches the format of this image and is inside the image
     /// - false otherwise
-    /// 
+    ///
     pub fn set(&mut self, x: usize, y: usize, color: Color) -> bool {
         if x >= self.width || y >= self.height {
             return false;
@@ -472,9 +441,9 @@ impl Image {
     }
 
     /// Reads an image from an `io::Read`
-    /// 
+    ///
     /// ## Errors
-    /// 
+    ///
     /// - see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
     /// - if the format isn't supported and `io::Error` of kind `io::ErrorKind::InvalidData`
     ///  is returned

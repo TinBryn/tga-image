@@ -148,10 +148,26 @@ impl Color {
 }
 
 /// The encoding style for saving an image
+#[derive(Debug, Clone)]
 pub enum Encoding {
     /// - Rle: run length encode the pixels, bad for natural images, good for
     /// images with large areas of the same color
     Rle,
+}
+
+impl Encoding {
+    fn data_type_code(encoding: &Option<Self>, bytes_pp: usize) -> u8 {
+        match bytes_pp {
+            1 => match encoding {
+                Some(Encoding::Rle) => 11,
+                _ => 3,
+            },
+            _ => match encoding {
+                Some(Encoding::Rle) => 10,
+                _ => 2,
+            },
+        }
+    }
 }
 
 /// # The in memory representation of an image
@@ -292,22 +308,9 @@ impl Image {
         E: Into<Option<Encoding>>,
     {
         let mut file = fs::File::create(filename.as_ref())?;
-        let developer_area_ref = [0, 0, 0, 0];
-        let extension_area_ref = [0, 0, 0, 0];
-        let footer = b"TRUEVISION-XFILE.\0";
-
         let encoding = encoding.into();
 
-        let data_type_code = match self.bytes_pp {
-            1 => match encoding {
-                Some(Encoding::Rle) => 11,
-                None => 3,
-            },
-            _ => match encoding {
-                Some(Encoding::Rle) => 10,
-                None => 2,
-            },
-        };
+        let data_type_code = Encoding::data_type_code(&encoding, self.bytes_pp);
 
         eprintln!("{:x}", data_type_code);
 
@@ -332,6 +335,10 @@ impl Image {
             None => file.write_all(&self.data)?,
             Some(Encoding::Rle) => self.save_rle_data(&mut file)?,
         }
+
+        let developer_area_ref = [0, 0, 0, 0];
+        let extension_area_ref = [0, 0, 0, 0];
+        let footer = b"TRUEVISION-XFILE.\0";
 
         file.write_all(&developer_area_ref)?;
         file.write_all(&extension_area_ref)?;

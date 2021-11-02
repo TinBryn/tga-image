@@ -2,3 +2,5 @@
 name = "tga-image"
 version = "0.0.1"
 edition = "2018"
+license = "MIT or Apache v2"
+authors = ["Kieran Griffiths <20491633@student.uwa.edu.au>"]

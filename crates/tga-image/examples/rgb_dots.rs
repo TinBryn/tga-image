@@ -14,5 +14,5 @@ fn main() {
 
     // now let's read the image back and write it again with run length encoding
     let image = Image::read_tga_file("rgb_dots.tga").unwrap();
-    image.write_tga_file("read_write", Encoding::Rle).unwrap();
+    image.write_tga_file("read_write.tga", Encoding::Rle).unwrap();
 }

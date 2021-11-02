@@ -3,3 +3,4 @@ target
 *.ppm
 output.*
 rgb_dots.tga
+read_write.tga

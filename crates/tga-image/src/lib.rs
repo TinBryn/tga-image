@@ -179,11 +179,10 @@ impl Image {
         }
     }
 
-    fn load_rle_data<R: io::Read>(
-        mut input: R,
-        bytes_pp: usize,
-        mut data: &mut [u8],
-    ) -> io::Result<()> {
+    fn load_rle_data<R>(mut input: R, bytes_pp: usize, mut data: &mut [u8]) -> io::Result<()>
+    where
+        R: io::Read,
+    {
         let mut buf = [0u8; 4];
         let buf = &mut buf[..bytes_pp];
         let mut chunk_header = 0;
@@ -208,7 +207,10 @@ impl Image {
         }
     }
 
-    fn save_rle_data<W: io::Write>(&self, mut output: W) -> io::Result<()> {
+    fn save_rle_data<W>(&self, mut output: W) -> io::Result<()>
+    where
+        W: io::Write,
+    {
         const MAX_CHUNK_LENGTH: usize = 128;
         let n_pixels = self.width * self.height;
         let mut current_pixel = 0;
@@ -270,7 +272,10 @@ impl Image {
     ///
     /// - while opening the file see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
     /// - while reading the file see [`from_reader`]
-    pub fn read_tga_file<P: AsRef<Path>>(filename: P) -> io::Result<Self> {
+    pub fn read_tga_file<P>(filename: P) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
         let file = std::fs::File::open(filename.as_ref())?;
 
         Self::from_reader(file)
@@ -281,11 +286,11 @@ impl Image {
     /// ## errors
     ///
     /// - while creating the file see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
-    pub fn write_tga_file<P: AsRef<Path>, E: Into<Option<Encoding>>>(
-        &self,
-        filename: P,
-        encoding: E,
-    ) -> io::Result<()> {
+    pub fn write_tga_file<P, E>(&self, filename: P, encoding: E) -> io::Result<()>
+    where
+        P: AsRef<Path>,
+        E: Into<Option<Encoding>>,
+    {
         let mut file = fs::File::create(filename.as_ref())?;
         let developer_area_ref = [0, 0, 0, 0];
         let extension_area_ref = [0, 0, 0, 0];
@@ -364,7 +369,7 @@ impl Image {
 
     /// Changes the width and height of the image
     ///
-    /// ??? it may stretch the image, this is not yet implemented
+    /// TODO: it may stretch the image, this is not yet implemented
     #[deprecated(note = "Not implemented yet")]
     pub fn scale(&mut self, width: usize, height: usize) -> bool {
         if width == 0 || height == 0 {
@@ -447,7 +452,10 @@ impl Image {
     /// - see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
     /// - if the format isn't supported and `io::Error` of kind `io::ErrorKind::InvalidData`
     ///  is returned
-    pub fn from_reader<R: io::Read>(mut reader: R) -> Result<Self, io::Error> {
+    pub fn from_reader<R>(mut reader: R) -> Result<Self, io::Error>
+    where
+        R: io::Read,
+    {
         let header = TgaHeader::from_reader(&mut reader)?;
 
         let width = header.width as usize;

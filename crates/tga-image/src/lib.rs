@@ -286,8 +286,8 @@ impl Image {
     ///
     /// ## errors
     ///
-    /// - while opening the file see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
-    /// - while reading the file see [`from_reader`]
+    /// - while opening the file see [<https://doc.rust-lang.org/std/fs/struct.File.html#errors>]
+    /// - while reading the file see [`Image::from_reader`]
     pub fn read_tga_file<P>(filename: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
@@ -301,7 +301,7 @@ impl Image {
     ///
     /// ## errors
     ///
-    /// - while creating the file see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
+    /// - while creating the file see [<https://doc.rust-lang.org/std/fs/struct.File.html#errors>]
     pub fn write_tga_file<P, E>(&self, filename: P, encoding: E) -> io::Result<()>
     where
         P: AsRef<Path>,
@@ -456,7 +456,7 @@ impl Image {
     ///
     /// ## Errors
     ///
-    /// - see [https://doc.rust-lang.org/std/fs/struct.File.html#errors]
+    /// - see [<https://doc.rust-lang.org/std/fs/struct.File.html#errors>]
     /// - if the format isn't supported and `io::Error` of kind `io::ErrorKind::InvalidData`
     ///  is returned
     pub fn from_reader<R>(mut reader: R) -> Result<Self, io::Error>

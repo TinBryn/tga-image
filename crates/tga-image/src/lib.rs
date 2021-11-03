@@ -312,8 +312,6 @@ impl Image {
 
         let data_type_code = Encoding::data_type_code(&encoding, self.bytes_pp);
 
-        eprintln!("{:x}", data_type_code);
-
         let header = TgaHeader {
             data_type_code,
             width: self.width as i16,
@@ -323,11 +321,7 @@ impl Image {
             ..Default::default()
         };
 
-        eprintln!("{:#x?}", header);
-
         let header = header.into_buffer();
-
-        eprintln!("{:x?}", header);
 
         file.write_all(&header)?;
 
@@ -374,18 +368,6 @@ impl Image {
         }
     }
 
-    /// Changes the width and height of the image
-    ///
-    /// TODO: it may stretch the image, this is not yet implemented
-    #[deprecated(note = "Not implemented yet")]
-    pub fn scale(&mut self, width: usize, height: usize) -> bool {
-        if width == 0 || height == 0 {
-            return false;
-        }
-
-        todo!()
-    }
-
     /// Access a single pixel within the image
     ///
     /// ## returns
@@ -417,7 +399,7 @@ impl Image {
             return false;
         }
 
-        self.data[(x + y * self.width) * self.bytes_pp..][..self.bytes_pp].clone_from_slice(slice);
+        self.data[(x + y * self.width) * self.bytes_pp..][..self.bytes_pp].copy_from_slice(slice);
 
         true
     }

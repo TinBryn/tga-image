@@ -317,7 +317,7 @@ impl Image {
             width: self.width as i16,
             height: self.height as i16,
             bits_per_pixel: self.bytes_pp as u8 * 8,
-            image_descriptor: 0x20,
+            image_descriptor: 0x00,
             ..Default::default()
         };
 

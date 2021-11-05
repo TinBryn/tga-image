@@ -33,23 +33,33 @@ fn main() {
 
 pub fn triangle(image: &mut tga::Image, t0: Vec2i, t1: Vec2i, t2: Vec2i, _color: tga::Color) {
     if t0[1] == t1[1] && t0[1] == t2[1] {
+        // degenerate triangle can be skipped
         return;
     }
 
+    // the points need to be sorted bottom to top
     let (t0, t1, t2) = sort_3_points_by_y(t0, t1, t2);
 
+    // for every y value in the range
     for y in t0[1]..=t2[1] {
+        // one side will go the whole way up
+        // get the x from that
         let ax = get_x_on_line_at_y(y, t0, t2);
 
+        // is this the split point
         let second_half = y > t1[1] || t1[1] == t0[1];
         let bx = if second_half {
+            // get x from the second shorter (by y) line
             get_x_on_line_at_y(y, t1, t2)
         } else {
+            // get x from the first shorter (by y) line
             get_x_on_line_at_y(y, t0, t1)
         };
 
+        // sort to get the lower number first
         let (ax, bx) = sort_2_ints(ax, bx);
         for x in ax..=bx {
+            // set each point on this horizontal line
             image.set(x as usize, y as usize, _color);
         }
     }

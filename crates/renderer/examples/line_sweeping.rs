@@ -31,45 +31,43 @@ fn main() {
         .unwrap();
 }
 
-fn interpolate(p1: isize, p2: isize, t: f32) -> isize {
-    (p1 as f32 + (p2 - p1) as f32 * t) as isize
-}
-
 pub fn triangle(image: &mut tga::Image, t0: Vec2i, t1: Vec2i, t2: Vec2i, _color: tga::Color) {
     if t0[1] == t1[1] && t0[1] == t2[1] {
         return;
     }
 
-    let (t0, t1, t2) = sort_points_by_y(t0, t1, t2);
-
-    let total_height = t2[1] - t0[1];
+    let (t0, t1, t2) = sort_3_points_by_y(t0, t1, t2);
 
     for y in t0[1]..=t2[1] {
+        let ax = get_x_on_line_at_y(y, t0, t2);
+
         let second_half = y > t1[1] || t1[1] == t0[1];
-        let segment_height = if second_half {
-            t2[1] - t1[1]
+        let bx = if second_half {
+            get_x_on_line_at_y(y, t1, t2)
         } else {
-            t1[1] - t0[1]
+            get_x_on_line_at_y(y, t0, t1)
         };
-        let alpha = (y - t0[1]) as f32 / total_height as f32;
-        let beta = if second_half { y - t1[1] } else { y - t0[1] } as f32 / segment_height as f32;
-        let mut ax = interpolate(t0[0], t2[0], alpha);
-        let (p1, p2) = if second_half {
-            (t1[0], t2[0])
-        } else {
-            (t0[0], t1[0])
-        };
-        let mut bx = interpolate(p1, p2, beta);
-        if ax > bx {
-            swap(&mut ax, &mut bx);
-        }
+
+        let (ax, bx) = sort_2_ints(ax, bx);
         for x in ax..=bx {
             image.set(x as usize, y as usize, _color);
         }
     }
 }
 
-fn sort_points_by_y(mut t0: Vec2i, mut t1: Vec2i, mut t2: Vec2i) -> (Vec2i, Vec2i, Vec2i) {
+fn sort_2_ints(mut ax: isize, mut bx: isize) -> (isize, isize) {
+    if ax > bx {
+        swap(&mut ax, &mut bx);
+    }
+    (ax, bx)
+}
+
+fn get_x_on_line_at_y(y: isize, t1: Vec2i, t2: Vec2i) -> isize {
+    let delta = t2 - t1;
+    t1[0] + (y - t1[1]) * delta[0] / delta[1]
+}
+
+fn sort_3_points_by_y(mut t0: Vec2i, mut t1: Vec2i, mut t2: Vec2i) -> (Vec2i, Vec2i, Vec2i) {
     if t0[1] > t1[1] {
         swap(&mut t0, &mut t1);
     }

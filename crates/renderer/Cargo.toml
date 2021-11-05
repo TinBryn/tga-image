@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 tga-image = { path = "../tga-image" }
 obj = { path = "../obj" }
+geometry = { path = "../geometry" }

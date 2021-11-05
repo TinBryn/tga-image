@@ -1,7 +1,10 @@
 #![warn(missing_docs)]
 
-//! Some basic vectors for 2d and 3d maths, although other dimensions are possible
-//! they are not supported
+//! # Some basic vectors for 2d and 3d maths,
+//! Only 2d and 3d are supported, although other dimensions are possible
+//! 
+//! The use of [`Copy`](core::marker::Copy) as a bound is used as it is expected that
+//! primitive like types will be used (`f32` `usize`, etc)
 
 use std::{
     iter::Sum,
@@ -143,6 +146,7 @@ impl<T: Mul<Output = T> + Sub<Output = T> + Copy> Vector<T, 3> {
 
 impl<T: Add<Output = T> + Copy, const N: usize> Add for Vector<T, N> {
     type Output = Self;
+    /// Elementwise addition
     fn add(self, rhs: Self) -> Self::Output {
         map2_array(self.data, rhs.data, T::add).into()
     }
@@ -150,6 +154,7 @@ impl<T: Add<Output = T> + Copy, const N: usize> Add for Vector<T, N> {
 
 impl<T: Sub<Output = T> + Copy, const N: usize> Sub for Vector<T, N> {
     type Output = Self;
+    /// Elementwise subtraction
     fn sub(self, rhs: Self) -> Self::Output {
         map2_array(self.data, rhs.data, T::sub).into()
     }
@@ -157,6 +162,7 @@ impl<T: Sub<Output = T> + Copy, const N: usize> Sub for Vector<T, N> {
 
 impl<T: Mul<Output = T> + Copy, const N: usize> Mul for Vector<T, N> {
     type Output = Self;
+    /// Elementwise multiplication
     fn mul(self, rhs: Self) -> Self::Output {
         map2_array(self.data, rhs.data, T::mul).into()
     }

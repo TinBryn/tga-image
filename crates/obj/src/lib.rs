@@ -8,7 +8,7 @@ use geometry::Vec3f;
 
 pub struct Model {
     verts: Vec<Vec3f>,
-    faces: Vec<Vec<i32>>,
+    faces: Vec<Vec<usize>>,
 }
 
 impl Model {
@@ -26,7 +26,7 @@ impl Model {
             let ws = line.find(' ');
             if let Some(index) = ws {
                 let (prefix, rest) = line.split_at(index);
-                match prefix {
+                match prefix.trim() {
                     "v" => {
                         let args: Result<Vec<_>, _> = rest
                             .trim()
@@ -37,16 +37,20 @@ impl Model {
                         let args =
                             args.map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
                         if args.len() == 3 {
-                            verts.push(Vec3f::new(args[0], args[1], args[2]));
+                            verts.push(Vec3f::new3(args[0], args[1], args[2]));
                         }
                     }
                     "f" => {
                         let args: Result<Vec<_>, _> = rest
                             .trim()
                             .split_ascii_whitespace()
-                            .map(|v| v.split('/').take(1))
+                            .map(|v| {
+                                v.split('/')
+                                    .take(1)
+                                    .map(str::parse)
+                                    .map(|r| r.map(|i: usize| i - 1))
+                            })
                             .flatten()
-                            .map(str::parse)
                             .collect();
                         let args =
                             args.map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
@@ -63,7 +67,7 @@ impl Model {
         &self.verts
     }
 
-    pub fn faces(&self) -> &[Vec<i32>] {
+    pub fn faces(&self) -> &[Vec<usize>] {
         &self.faces
     }
 }

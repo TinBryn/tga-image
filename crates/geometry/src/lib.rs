@@ -2,7 +2,7 @@
 
 //! # Some basic vectors for 2d and 3d maths,
 //! Only 2d and 3d are supported, although other dimensions are possible
-//! 
+//!
 //! The use of [`Copy`](core::marker::Copy) as a bound is used as it is expected that
 //! primitive like types will be used (`f32` `usize`, etc)
 
@@ -40,9 +40,7 @@ pub struct Vector<T, const N: usize> {
 
 impl<T: Default + Copy, const N: usize> Default for Vector<T, N> {
     fn default() -> Self {
-        Self {
-            data: [T::default(); N],
-        }
+        [T::default(); N].into()
     }
 }
 
@@ -77,16 +75,12 @@ impl<T> Vector<T, 3> {
     }
 }
 
-fn map2_array<T, F, const N: usize>(a: [T; N], b: [T; N], f: F) -> [T; N]
-where
-    T: Copy,
-    F: Fn(T, T) -> T,
-{
-    let mut result = [MaybeUninit::<T>::uninit(); N];
+// there is a nice std method `array::zip` but it's unstable so I can't use it on stable
+fn zip_array<T: Copy, U: Copy, const N: usize>(a: [T; N], b: [U; N]) -> [(T, U); N] {
+    let mut result = [MaybeUninit::uninit(); N];
     for i in 0..N {
-        result[i] = MaybeUninit::new(f(a[i], b[i]));
+        result[i] = MaybeUninit::new((a[i], b[i]));
     }
-    // safety: the loop above just initialized all the values
     result.map(|x| unsafe { x.assume_init() })
 }
 
@@ -96,9 +90,7 @@ where
 {
     /// The vector dot product
     pub fn dot(self, rhs: Self) -> T {
-        map2_array(self.data, rhs.data, |a, b| a * b)
-            .into_iter()
-            .sum()
+        (self * rhs).data.into_iter().sum()
     }
 
     /// the square of the magnitude of this vector
@@ -148,7 +140,7 @@ impl<T: Add<Output = T> + Copy, const N: usize> Add for Vector<T, N> {
     type Output = Self;
     /// Elementwise addition
     fn add(self, rhs: Self) -> Self::Output {
-        map2_array(self.data, rhs.data, T::add).into()
+        zip_array(self.data, rhs.data).map(|(a, b)| a + b).into()
     }
 }
 
@@ -156,7 +148,7 @@ impl<T: Sub<Output = T> + Copy, const N: usize> Sub for Vector<T, N> {
     type Output = Self;
     /// Elementwise subtraction
     fn sub(self, rhs: Self) -> Self::Output {
-        map2_array(self.data, rhs.data, T::sub).into()
+        zip_array(self.data, rhs.data).map(|(a, b)| a - b).into()
     }
 }
 
@@ -164,29 +156,20 @@ impl<T: Mul<Output = T> + Copy, const N: usize> Mul for Vector<T, N> {
     type Output = Self;
     /// Elementwise multiplication
     fn mul(self, rhs: Self) -> Self::Output {
-        map2_array(self.data, rhs.data, T::mul).into()
+        zip_array(self.data, rhs.data).map(|(a, b)| a * b).into()
     }
-}
-
-fn map_array<T: Copy, F: Fn(T) -> T, const N: usize>(a: [T; N], f: F) -> [T; N] {
-    let mut result = [MaybeUninit::<T>::uninit(); N];
-    for i in 0..N {
-        result[i] = MaybeUninit::new(f(a[i]));
-    }
-    // safety: the loop above just initialized all the values
-    result.map(|x| unsafe { x.assume_init() })
 }
 
 impl<T: Copy + Mul<Output = T>, const N: usize> Mul<T> for Vector<T, N> {
     type Output = Self;
     fn mul(self, rhs: T) -> Self::Output {
-        map_array(self.data, |lhs| lhs * rhs).into()
+        self.data.map(|lhs| lhs * rhs).into()
     }
 }
 
 impl<T: Copy + Neg<Output = T>, const N: usize> Neg for Vector<T, N> {
     type Output = Self;
     fn neg(self) -> Self::Output {
-        map_array(self.data, T::neg).into()
+        self.data.map(T::neg).into()
     }
 }

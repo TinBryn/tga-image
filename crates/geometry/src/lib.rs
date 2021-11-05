@@ -1,184 +1,186 @@
-use std::ops::{Add, Index, IndexMut, Mul, Neg, Sub};
+#![warn(missing_docs)]
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Vec3f {
-    data: [f32; 3],
+//! Some basic vectors for 2d and 3d maths, although other dimensions are possible
+//! they are not supported
+
+use std::{
+    iter::Sum,
+    mem::MaybeUninit,
+    ops::{Add, Index, IndexMut, Mul, Neg, Sub},
+};
+
+/// A 3d vector of f32
+pub type Vec3f = Vector<f32, 3>;
+/// A 3d vector of f64
+pub type Vec3d = Vector<f64, 3>;
+/// A 3d vector of isize
+pub type Vec3i = Vector<isize, 3>;
+/// A 3d vector of usize
+pub type Vec3u = Vector<usize, 3>;
+
+/// A 2d vector of f32
+pub type Vec2f = Vector<f32, 2>;
+/// A 2d vector of f64
+pub type Vec2d = Vector<f64, 2>;
+/// A 2d vector of isize
+pub type Vec2i = Vector<isize, 2>;
+/// A 2d vector of usize
+pub type Vec2u = Vector<usize, 2>;
+
+/// A vector that supports some basic mathematical operations  
+/// ---
+/// these are currently only fully supported for 2d and 3d versions
+#[derive(Debug, Clone, Copy)]
+pub struct Vector<T, const N: usize> {
+    data: [T; N],
 }
 
-impl Vec3f {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { data: [x, y, z] }
+impl<T: Default + Copy, const N: usize> Default for Vector<T, N> {
+    fn default() -> Self {
+        Self {
+            data: [T::default(); N],
+        }
+    }
+}
+
+impl<T, const N: usize> From<[T; N]> for Vector<T, N> {
+    fn from(data: [T; N]) -> Self {
+        Self { data }
+    }
+}
+
+impl<T, const N: usize> Vector<T, N> {
+    /// Converts this vector into an array of the elements
+    pub fn into_array(self) -> [T; N] {
+        self.data
+    }
+}
+
+impl<T> Vector<T, 2> {
+    /// ## Constructor for 2d vector
+    /// note: rust-analyzer doesn't support the const generics used here and reports
+    /// a false positive if this constructor has the same name for different sized vectors
+    pub fn new2(x: T, y: T) -> Self {
+        [x, y].into()
+    }
+}
+
+impl<T> Vector<T, 3> {
+    /// ## Constructor for 3d vector
+    /// note: rust-analyzer doesn't support the const generics used here and reports
+    /// a false positive if this constructor has the same name for different sized vectors
+    pub fn new3(x: T, y: T, z: T) -> Self {
+        [x, y, z].into()
+    }
+}
+
+fn map2_array<T, F, const N: usize>(a: [T; N], b: [T; N], f: F) -> [T; N]
+where
+    T: Copy,
+    F: Fn(T, T) -> T,
+{
+    let mut result = [MaybeUninit::<T>::uninit(); N];
+    for i in 0..N {
+        result[i] = MaybeUninit::new(f(a[i], b[i]));
+    }
+    // safety: the loop above just initialized all the values
+    result.map(|x| unsafe { x.assume_init() })
+}
+
+impl<T, const N: usize> Vector<T, N>
+where
+    T: Mul<Output = T> + Sum + Copy,
+{
+    /// The vector dot product
+    pub fn dot(self, rhs: Self) -> T {
+        map2_array(self.data, rhs.data, |a, b| a * b)
+            .into_iter()
+            .sum()
     }
 
-    pub fn len_sqr(self) -> f32 {
+    /// the square of the magnitude of this vector
+    pub fn len_sqr(self) -> T {
         self.dot(self)
     }
+}
 
+impl<const N: usize> Vector<f32, N> {
+    /// the magnitude of this vector
     pub fn len(self) -> f32 {
         self.len_sqr().sqrt()
     }
+}
 
-    pub fn dot(self, rhs: Vec3f) -> f32 {
-        map2_array_3f(self.data, rhs.data, f32::mul).iter().sum()
+impl<const N: usize> Vector<f64, N> {
+    /// the magnitude of this vector
+    pub fn len(self) -> f64 {
+        self.len_sqr().sqrt()
     }
+}
 
-    pub fn cross(self, rhs: Vec3f) -> Vec3f {
+impl<T, const N: usize> Index<usize> for Vector<T, N> {
+    type Output = T;
+    fn index(&self, index: usize) -> &Self::Output {
+        self.data.index(index)
+    }
+}
+
+impl<T, const N: usize> IndexMut<usize> for Vector<T, N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        self.data.index_mut(index)
+    }
+}
+
+impl<T: Mul<Output = T> + Sub<Output = T> + Copy> Vector<T, 3> {
+    /// the vector cross product
+    pub fn cross(self, rhs: Self) -> Self {
         let x = self[1] * rhs[2] - self[2] * rhs[1];
         let y = self[2] * rhs[0] - self[0] * rhs[2];
         let z = self[0] * rhs[1] - self[1] * rhs[0];
-        Self::new(x, y, z)
+        [x, y, z].into()
     }
 }
 
-fn map2_array_3f<F: Fn(f32, f32) -> f32>(a: [f32; 3], b: [f32; 3], f: F) -> [f32; 3] {
-    [f(a[0], b[0]), f(a[1], b[1]), f(a[2], b[2])]
-}
-
-impl Index<usize> for Vec3f {
-    type Output = f32;
-    fn index(&self, index: usize) -> &Self::Output {
-        self.data.index(index)
-    }
-}
-
-impl IndexMut<usize> for Vec3f {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.data.index_mut(index)
-    }
-}
-
-impl Add for Vec3f {
+impl<T: Add<Output = T> + Copy, const N: usize> Add for Vector<T, N> {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            data: map2_array_3f(self.data, rhs.data, f32::add),
-        }
+        map2_array(self.data, rhs.data, T::add).into()
     }
 }
 
-impl Neg for Vec3f {
-    type Output = Self;
-    fn neg(self) -> Self::Output {
-        Self {
-            data: [-self[0], -self[1], -self[2]],
-        }
-    }
-}
-
-impl Sub for Vec3f {
+impl<T: Sub<Output = T> + Copy, const N: usize> Sub for Vector<T, N> {
     type Output = Self;
     fn sub(self, rhs: Self) -> Self::Output {
-        Self {
-            data: map2_array_3f(self.data, rhs.data, f32::sub),
-        }
+        map2_array(self.data, rhs.data, T::sub).into()
     }
 }
 
-impl Mul<f32> for Vec3f {
+impl<T: Mul<Output = T> + Copy, const N: usize> Mul for Vector<T, N> {
     type Output = Self;
-    fn mul(self, rhs: f32) -> Self::Output {
-        Self::Output {
-            data: [self[0] * rhs, self[1] * rhs, self[2] * rhs],
-        }
+    fn mul(self, rhs: Self) -> Self::Output {
+        map2_array(self.data, rhs.data, T::mul).into()
     }
 }
 
-impl Mul<Vec3f> for f32 {
-    type Output = Vec3f;
-    fn mul(self, rhs: Vec3f) -> Self::Output {
-        rhs * self
+fn map_array<T: Copy, F: Fn(T) -> T, const N: usize>(a: [T; N], f: F) -> [T; N] {
+    let mut result = [MaybeUninit::<T>::uninit(); N];
+    for i in 0..N {
+        result[i] = MaybeUninit::new(f(a[i]));
     }
+    // safety: the loop above just initialized all the values
+    result.map(|x| unsafe { x.assume_init() })
 }
 
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Vec2f {
-    data: [f32; 2],
-}
-
-impl Vec2f {
-    pub fn new(x: f32, y: f32) -> Self {
-        Self { data: [x, y] }
-    }
-
-    pub fn len_sqr(self) -> f32 {
-        self.dot(self)
-    }
-
-    pub fn len(self) -> f32 {
-        self.len_sqr().sqrt()
-    }
-
-    pub fn dot(self, rhs: Self) -> f32 {
-        map2_array_2f(self.data, rhs.data, f32::mul).iter().sum()
-    }
-}
-
-fn map2_array_2f<F: Fn(f32, f32) -> f32>(a: [f32; 2], b: [f32; 2], f: F) -> [f32; 2] {
-    [f(a[0], b[0]), f(a[1], b[1])]
-}
-
-impl Index<usize> for Vec2f {
-    type Output = f32;
-    fn index(&self, index: usize) -> &Self::Output {
-        self.data.index(index)
-    }
-}
-
-impl IndexMut<usize> for Vec2f {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        self.data.index_mut(index)
-    }
-}
-
-impl Add for Vec2f {
+impl<T: Copy + Mul<Output = T>, const N: usize> Mul<T> for Vector<T, N> {
     type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            data: map2_array_2f(self.data, rhs.data, f32::add),
-        }
+    fn mul(self, rhs: T) -> Self::Output {
+        map_array(self.data, |lhs| lhs * rhs).into()
     }
 }
 
-impl Neg for Vec2f {
+impl<T: Copy + Neg<Output = T>, const N: usize> Neg for Vector<T, N> {
     type Output = Self;
     fn neg(self) -> Self::Output {
-        Self {
-            data: [-self[0], -self[1]],
-        }
-    }
-}
-
-impl Sub for Vec2f {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self {
-            data: map2_array_2f(self.data, rhs.data, f32::sub),
-        }
-    }
-}
-
-impl Mul<f32> for Vec2f {
-    type Output = Self;
-    fn mul(self, rhs: f32) -> Self::Output {
-        Self::Output {
-            data: [self[0] * rhs, self[1] * rhs],
-        }
-    }
-}
-
-impl Mul<Vec2f> for f32 {
-    type Output = Vec2f;
-    fn mul(self, rhs: Vec2f) -> Self::Output {
-        rhs * self
-    }
-}
-
-#[cfg(test)]
-mod test {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        let expected = 4;
-        assert_eq!(result, expected);
+        map_array(self.data, T::neg).into()
     }
 }

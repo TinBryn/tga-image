@@ -1,6 +1,6 @@
 use std::mem::swap;
 
-use geometry::Vec2i;
+use geometry::{Vec2i, Vec3f, Vec3i};
 use tga_image as tga;
 
 pub trait Draw {
@@ -10,6 +10,51 @@ pub trait Draw {
 impl Draw for tga::Image {
     fn draw_line(&mut self, p0: impl Into<Vec2i>, p1: impl Into<Vec2i>, color: tga::Color) {
         line_vec(p0.into(), p1.into(), self, color);
+    }
+}
+
+pub fn barycentric(points: [Vec2i; 3], point: Vec2i) -> Vec3f {
+    let ab = points[2] - points[0];
+    let ac = points[1] - points[0];
+    let pa = points[0] - point;
+    let v1 = Vec3i::new3(ab[0], ac[0], pa[0]);
+    let v2 = Vec3i::new3(ab[1], ac[1], pa[1]);
+    let u = v1.cross(v2);
+
+    if u[2].abs() < 1 {
+        Vec3f::new3(-1.0, -1.0, -1.0)
+    } else {
+
+        let d = 1.0 / u[2] as f32;
+        let (u, v) = (u[0] as f32, u[1] as f32);
+        Vec3f::new3(
+            1.0 - (u + v)  * d,
+            v * d,
+            u * d,
+        )
+    }
+}
+
+pub fn triangle(image: &mut tga::Image, points: [Vec2i; 3], color: tga::Color) {
+    let mut bboxmin = Vec2i::new2(image.width() as isize - 1, image.height() as isize - 1);
+    let mut bboxmax = Vec2i::new2(0, 0);
+    let clamp = Vec2i::new2(image.width() as isize - 1, image.height() as isize - 1);
+
+    for point in points {
+        for j in 0..2 {
+            bboxmin[j] = 0.max(bboxmin[j].min(point[j]));
+            bboxmax[j] = clamp[j].min(bboxmax[j].max(point[j]));
+        }
+    }
+
+    for x in bboxmin[0]..=bboxmax[0] {
+        for y in bboxmin[1]..=bboxmax[1] {
+            let bc_screen = barycentric(points, Vec2i::new2(x, y));
+            if bc_screen[0] >= 0.0 && bc_screen[1] >= 0.0 && bc_screen[2] >= 0.0 {
+                image.set(x as usize, y as usize, color);
+            } else {
+            }
+        }
     }
 }
 

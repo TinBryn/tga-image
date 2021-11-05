@@ -44,6 +44,8 @@ impl Model {
                         let args: Result<Vec<_>, _> = rest
                             .trim()
                             .split_ascii_whitespace()
+                            .map(|v| v.split('/').take(1))
+                            .flatten()
                             .map(str::parse)
                             .collect();
                         let args =

@@ -1,6 +1,6 @@
 use std::mem::swap;
 
-use geometry::{Vec2i, Vec3f, Vec3i};
+use geometry::{Vec2f, Vec2i, Vec3f, Vec3i};
 use tga_image as tga;
 
 pub trait Draw {
@@ -24,14 +24,9 @@ pub fn barycentric(points: [Vec2i; 3], point: Vec2i) -> Vec3f {
     if u[2].abs() < 1 {
         Vec3f::new3(-1.0, -1.0, -1.0)
     } else {
-
         let d = 1.0 / u[2] as f32;
         let (u, v) = (u[0] as f32, u[1] as f32);
-        Vec3f::new3(
-            1.0 - (u + v)  * d,
-            v * d,
-            u * d,
-        )
+        Vec3f::new3(1.0 - (u + v) * d, v * d, u * d)
     }
 }
 
@@ -56,6 +51,55 @@ pub fn triangle(image: &mut tga::Image, points: [Vec2i; 3], color: tga::Color) {
             }
         }
     }
+}
+
+pub fn triangle_with_depth_test(
+    image: &mut tga::Image,
+    points: [Vec3f; 3],
+    z_buffer: &mut [f32],
+    color: tga::Color,
+) {
+    let mut bboxmin = Vec2f::new2(f32::MAX, f32::MAX);
+    let mut bboxmax = Vec2f::new2(f32::MIN, f32::MIN);
+    let clamp = Vec2f::new2(image.width() as f32 - 1.0, image.height() as f32 - 1.0);
+
+    for point in points {
+        for j in 0..2 {
+            bboxmin[j] = 0.0f32.max(bboxmin[j].min(point[j]));
+            bboxmax[j] = clamp[j].min(bboxmax[j].max(point[j]));
+        }
+    }
+
+    let mut z = 0.0;
+    for x in (bboxmin[0] as usize)..=(bboxmax[0] as usize) {
+        for y in (bboxmin[1] as usize)..=(bboxmax[1] as usize) {
+            let bc_screen = barycentric_3f(points, Vec3f::new3(x as f32, y as f32, z));
+            if bc_screen[0] >= 0.0 && bc_screen[1] >= 0.0 && bc_screen[2] >= 0.0 {
+                z = 0.0;
+                for i in 0..3 {
+                    z += points[i][2] * bc_screen[i];
+                }
+                let idx = x + y * image.width();
+                if z_buffer[idx] < z {
+                    z_buffer[idx] = z;
+                    image.set(x, y, color);
+                }
+            }
+        }
+    }
+}
+
+pub fn barycentric_3f(points: [Vec3f; 3], point: Vec3f) -> Vec3f {
+    let ab = points[2] - points[0];
+    let ac = points[1] - points[0];
+    let pa = points[0] - point;
+    let v1 = Vec3f::new3(ab[0], ac[0], pa[0]);
+    let v2 = Vec3f::new3(ab[1], ac[1], pa[1]);
+    let u = v1.cross(v2);
+
+    let d = 1.0 / u[2];
+    let (u, v) = (u[0], u[1]);
+    Vec3f::new3(1.0 - (u + v) * d, v * d, u * d)
 }
 
 fn line_vec(p0: Vec2i, p1: Vec2i, image: &mut tga::Image, color: tga::Color) {

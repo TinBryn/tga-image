@@ -98,6 +98,7 @@ fn line_vec(p0: Vec2i, p1: Vec2i, image: &mut tga::Image, color: tga::Color) {
 pub mod colors {
     use tga_image::Color;
     pub const WHITE: Color = Color::rgb(255, 255, 255);
+    pub const BLACK: Color = Color::rgb(0, 0, 0);
     pub const RED: Color = Color::rgb(255, 0, 0);
     pub const GREEN: Color = Color::rgb(0, 255, 0);
 }
